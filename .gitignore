@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+*.token
+*.pem
+*.key
+asana-exports*/
+.asana-incomplete-*/
+asana-time-diagnostic-*.json
+private-samples/
+*Token*.txt
+*token*.txt
+secrets/
+local-validation/
+.v1-preservation-check.json
+# Original private narrative stays local; repository docs use synthetic examples.
+HANDOFF.md
+HANDOFF_PROMPT.txt
+START_HERE.txt
+tools/diagnostics/
+postgres-reports/
+*.dump
+*.tar
+output/
+tmp/pdfs/

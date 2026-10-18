@@ -1,0 +1,79 @@
+name: asana-reporting-postgres
+
+services:
+  postgres:
+    image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+    environment:
+      POSTGRES_DB: asana_reporting
+      POSTGRES_USER: asana_reporting
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asana_reporting -d asana_reporting"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: "no"
+
+  store:
+    image: asana-reporting:postgres
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+      target: runtime
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment: &database_environment
+      PGHOST: postgres
+      PGDATABASE: asana_reporting
+      PGUSER: asana_reporting
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      # Local isolated Docker network only. Remote DBs default to verify-full.
+      PGSSLMODE: disable
+    secrets: [postgres_password]
+    volumes:
+      - ./asana-exports-v2:/snapshots:ro
+      - ./postgres-reports:/data
+    networks: [database]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["--help"]
+
+  integration-tests:
+    profiles: [test]
+    image: asana-reporting:postgres-test
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+      target: test
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *database_environment
+      ASANA_TEST_POSTGRES: "1"
+    secrets: [postgres_password]
+    networks: [database]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+secrets:
+  postgres_password:
+    file: ${ASANA_PG_PASSWORD_FILE:?Set ASANA_PG_PASSWORD_FILE to a local password file}
+
+volumes:
+  postgres_data:
+
+networks:
+  database:
+    internal: true

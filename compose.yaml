@@ -1,0 +1,26 @@
+services:
+  exporter:
+    image: asana-reporting:local
+    build:
+      context: .
+      target: runtime
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ASANA_ACCESS_TOKEN_FILE: /run/secrets/asana_token
+      TZ: America/El_Salvador
+    secrets:
+      - asana_token
+    volumes:
+      - ./asana-exports-v2:/data
+    entrypoint: ["python", "/app/asana_time_export.py", "--non-interactive", "--output", "/data"]
+    command: ["--help"]
+    restart: "no"
+
+secrets:
+  asana_token:
+    file: ${ASANA_TOKEN_FILE:?Set ASANA_TOKEN_FILE to an existing local token file}

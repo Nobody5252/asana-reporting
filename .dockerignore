@@ -1,0 +1,14 @@
+# Allowlist: credentials, exports and local/private documentation never enter builds.
+**
+!Dockerfile
+!Dockerfile.postgres
+!Dockerfile.sheets
+!.dockerignore
+!asana_time_export.py
+!tests/
+!tests/*.py
+!asana_postgres.py
+!asana_sheets.py
+!requirements-postgres.txt
+!postgres/
+!postgres/*.sql

@@ -1,0 +1,73 @@
+name: Validation
+
+on:
+  push:
+    branches: [main, feature/postgres-storage]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-and-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Offline exporter regressions
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python3 -m unittest discover -s tests -q
+      - name: Run offline tests in the container build
+        run: docker build --target test -t asana-reporting:test .
+      - name: Build optional Sheets publisher and smoke test
+        run: |
+          docker build -f Dockerfile.sheets -t asana-reporting:sheets .
+          docker run --rm --network none --read-only asana-reporting:sheets --help
+      - name: Build runtime and smoke test without network or secrets
+        run: |
+          docker build --target runtime -t asana-reporting:ci .
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges asana-reporting:ci --help
+          test "$(docker run --rm --network none --entrypoint id asana-reporting:ci -u)" = "10001"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint python asana-reporting:ci -c "import ssl; c=ssl.create_default_context(); assert c.check_hostname and c.cert_store_stats()['x509_ca'] > 0"
+      - name: Validate Compose configuration with a synthetic secret path
+        run: |
+          ASANA_TOKEN_FILE=/tmp/offline-only.token docker compose config --quiet
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASANA_PG_PASSWORD_FILE: ./secrets/postgres.password
+      COMPOSE_ANSI: never
+      COMPOSE_PROGRESS: plain
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Create disposable database password without printing it
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, secrets
+          Path('secrets').mkdir(mode=0o700)
+          fd = os.open('secrets/postgres.password', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(fd, 'w') as handle:
+              handle.write(secrets.token_urlsafe(48) + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as handle:
+              handle.write(f'LOCAL_UID={os.getuid()}\nLOCAL_GID={os.getgid()}\n')
+          PY
+      - name: Build optional Postgres images
+        run: |
+          docker build -f Dockerfile.postgres --target test -t asana-reporting:postgres-test .
+          docker build -f Dockerfile.postgres --target runtime -t asana-reporting:postgres .
+          docker run --rm --network none --read-only asana-reporting:postgres --help
+      - name: Run regressions against real Postgres with synthetic snapshots
+        run: docker compose -p asana-reporting-ci -f compose.postgres.yaml --profile test run --rm integration-tests
+      - name: Remove disposable test services and synthetic database volume
+        if: always()
+        run: docker compose -p asana-reporting-ci -f compose.postgres.yaml down --volumes
