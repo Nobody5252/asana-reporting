@@ -23,7 +23,7 @@ locking are separate from reporting logged time.
 - Google Sheets publication to Daily, Week, Monthly, Entries and Status tabs.
 - Docker images for the collector and optional database and Sheets tools.
 
-There are 82 automated tests: 73 run offline and nine exercise real Postgres
+There are 88 automated tests: 79 run offline and nine exercise real Postgres
 in CI. Authorized live collection, database imports and connected Sheets refreshes
 have also been checked. Secrets and real exports are excluded from Git and builds.
 
@@ -164,11 +164,14 @@ result. Repeated publication does not append duplicate hours.
 
 Keep notes/formulas on separate tabs: managed ranges are replaced during a
 refresh. Each workbook belongs to one owner/workspace and rolls forward with
-the source snapshot's end date. Monthly shows daily hours/counts month-to-date;
+the source snapshot's end date. Monthly shows full previous-month and current
+month-to-date totals, followed by daily hours/counts for both months;
 Week and Entries cover the last seven days, including that date. Daily shows
 that date's totals followed by its individual entries. Zero days remain visible.
-Collection must cover both the full month-to-date and seven-day window, even
-when the week starts in the previous month. Older dates/observations are rejected.
+Collection defaults to the first of the previous month through the report date.
+An October 19 run therefore includes all September and October to date. This
+uses calendar boundaries, not a fixed 30/60-day count. A month-to-date-only option
+also exists. Insufficient calendar coverage and older observations are rejected.
 
 ### Google setup
 
@@ -396,7 +399,7 @@ the uppercase placeholders below:
 python3 asana_time_export.py \
   --token-file "$HOME/.config/asana-reporting/asana.token" \
   --expected-owner OWNER_GID --workspace WORKSPACE_GID \
-  --days 30 --end yesterday --include-tasks \
+  --calendar-months 2 --end yesterday --include-tasks \
   --output ./asana-exports-v2 --non-interactive
 ```
 
@@ -443,7 +446,7 @@ PowerShell continuation backtick must have no trailing spaces.
 ```powershell
 python asana_time_export.py --token-file $token `
   --expected-owner OWNER_GID --workspace WORKSPACE_GID `
-  --start 2026-10-01 --end 2026-10-17 `
+  --calendar-months 2 --end 2026-10-17 `
   --include-tasks --output .\asana-exports-v2 --non-interactive
 ```
 
@@ -478,7 +481,7 @@ docker compose build
 docker compose run --rm exporter --list-workspaces
 docker compose run --rm exporter \
   --expected-owner OWNER_GID --workspace WORKSPACE_GID \
-  --days 30 --end yesterday --include-tasks
+  --calendar-months 2 --end yesterday --include-tasks
 ```
 
 ### Windows PowerShell
@@ -492,7 +495,7 @@ docker compose build
 docker compose run --rm exporter --list-workspaces
 docker compose run --rm exporter `
   --expected-owner OWNER_GID --workspace WORKSPACE_GID `
-  --days 30 --end yesterday --include-tasks
+  --calendar-months 2 --end yesterday --include-tasks
 ```
 
 The supplied collector container uses America/El_Salvador. Completed snapshots

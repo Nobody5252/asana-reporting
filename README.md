@@ -47,12 +47,19 @@ Use the same computer's intended work calendar/timezone for relative dates.
 
 ```sh
 python3 asana_time_export.py --list-workspaces
-python3 asana_time_export.py --workspace WORKSPACE_GID --days 30 --include-tasks
+python3 asana_time_export.py --workspace WORKSPACE_GID --calendar-months 2 --include-tasks
 python3 asana_time_export.py --workspace WORKSPACE_GID --start 2026-10-01 --end 2026-10-18 --include-tasks
 python3 asana_time_export.py --workspace WORKSPACE_GID --date yesterday
 # Pass a designated file path, never the token itself.
-python3 asana_time_export.py --token-file /approved/secrets/asana.token --expected-owner OWNER_GID --workspace WORKSPACE_GID --start 2026-10-01 --end 2026-10-18 --non-interactive
+python3 asana_time_export.py --token-file /approved/secrets/asana.token --expected-owner OWNER_GID --workspace WORKSPACE_GID --calendar-months 2 --end 2026-10-19 --non-interactive
 ```
+
+With no date-range options, collection covers the **full previous calendar month
+plus the current month to date**. For example, an October 19 run starts September 1.
+`--calendar-months 1` selects month-to-date reporting; near month start it also
+collects the prior days needed by Week/Entries. `--end` can anchor either mode to
+an explicit report date. Arbitrary `--start`/`--days` ranges remain available for
+targeted exports, but incomplete calendar coverage is rejected by the Sheets publisher.
 
 On Windows, use an approved Python interpreter, such as `python`, if `py -3`
 is unavailable. The tool prompts without echoing the token and never writes it.
@@ -167,7 +174,8 @@ decisions. Never share consultants' tokens or use a colleague's token.
 
 Optional Google Sheets reporting is available through `asana_sheets.py` and
 `Dockerfile.sheets`. It refreshes five tabs from validated snapshots: Monthly
-shows month-to-date daily totals; Week and Entries cover the last seven days;
+shows a full previous-month total and current month-to-date total, followed by
+their daily breakdowns; Week and Entries cover the last seven days;
 Daily contains the report date's totals and individual entries; Status records
 coverage and freshness. Windows roll forward without a database. See
 [Sheets setup and refresh](docs/sheets.md).

@@ -37,12 +37,12 @@ Uppercase identifiers below are placeholders, not credential values.
 python3 asana_time_export.py \
   --token-file /approved/secrets/consultant-asana.token \
   --expected-owner OWNER_GID --workspace WORKSPACE_GID \
-  --days 60 --end yesterday --include-tasks \
+  --calendar-months 2 --end yesterday --include-tasks \
   --output /approved/private/snapshots --non-interactive
 ```
 
 Use the completed snapshot directory printed by the collector in later stages.
-The 60-day lookback is an example, not a retention or billing-period policy.
+This collects the full previous month plus the current month through yesterday.
 The collector accepts at most 366 inclusive days in one run. Historical backfill
 must split larger periods and preserve source observation ordering.
 
@@ -73,7 +73,7 @@ owner and produces daily CSV; a combined management view/export is future work.
 ### Optionally publish the same snapshot to Sheets
 
 Initialize a dedicated native workbook through the connected spreadsheet creation
-workflow first. It must contain the four supported tabs and valid Status scope.
+workflow first. It must contain the five supported tabs and valid Status scope.
 
 ```sh
 python3 asana_sheets.py /approved/private/snapshots/COMPLETED_RUN \
@@ -155,10 +155,13 @@ merely to refresh cell values.
 
 ## Rolling windows and retained history
 
-The Sheets publisher implements a rolling feed: month-to-date daily totals,
+The Sheets publisher implements a calendar feed: the full previous month and
+the current month to date, with separate month totals and daily breakdowns;
 the latest seven days of summaries/entries, and the report day's totals/entries.
 Owner/workspace, coverage and freshness checks remain enforced. Collect from
-the earlier of month start and six days before the report date through that date.
+the first of the previous month through the report date (`--calendar-months 2`,
+the collector default). Month-to-date-only mode is available with `--calendar-months 1`;
+near month start that mode also collects the prior days needed for the full week.
 Retain/archive earlier snapshots before replacement.
 Refresh all open billing periods and define how corrections outside the lookback
 are requested. Never append overlapping exports or sum repeated daily snapshots.

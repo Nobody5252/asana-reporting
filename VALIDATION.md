@@ -8,7 +8,7 @@ Run from this project root:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
-**Current suite: 82 tests.** Ordinary offline runs pass 73 tests and explicitly
+**Current suite: 88 tests.** Ordinary offline runs pass 79 tests and explicitly
 skip nine Postgres integration tests. GitHub CI also runs those nine tests
 against a disposable real database. Both jobs passed on October 18, 2026.
 See [repository Actions](https://github.com/Nobody5252/asana-reporting/actions)
@@ -77,8 +77,8 @@ publishing or remote application deployment is configured.
 ## Postgres validation
 
 All capabilities belong together on `main` under the October 18 user
-instruction. The core `asana_time_export.py` remains unchanged from the validated
-script baseline. Postgres support is a separate optional module and image,
+instruction. The core retains the validated collection/ownership logic and now
+adds calendar-month date selection. Postgres support is a separate optional module and image,
 with no new dependencies in the exporter runtime or host Python environment.
 
 Before Sheets was added, all **69 tests passed** in the optional image against local Postgres 18:
@@ -108,21 +108,28 @@ independent core/enrichment jobs remain future architecture work.
 
 ## Sheets integration
 
-The suite now includes thirteen synthetic Sheets tests: integer-minute totals,
+The suite now includes seventeen synthetic Sheets tests: integer-minute totals,
 literal names and long text IDs, repeated replacement and trailing-row clearing,
 scope/freshness protection, zero-entry windows, readback mismatch detection,
 bounded grid growth, unrelated tabs, HTTP target/auth and error redaction.
-There are now 82 tests total: 73 pass offline and nine require opt-in Postgres.
+There are now 88 tests total: 79 pass offline and nine require opt-in Postgres.
 Six additional rolling-report tests cover independent month/week/day totals,
 seven-day filtering, a week crossing month boundaries, incomplete source coverage,
 zero days, forward-date refreshes, stale report dates and explicit v1 migration
 with identity checks. Daily includes its summary plus individual entries;
-Monthly contains daily month-to-date summaries rather than monthly bucket rows.
+Monthly now includes separate full previous-month/current month-to-date totals
+and their daily breakdown. Calendar tests cover missing early-month data, leap
+February, January year rollover, month-to-date-only mode, explicit layout
+migration and collector argument conflicts. The collector defaults to calendar
+coverage; arbitrary day counts require explicit selection.
 
 The rolling layout was also exercised with an authorized live snapshot and the
 connected Google Sheets transport. All five tabs matched the generated report,
 including month-to-date daily totals, the seven-day entry list, and a zero-day
-Daily summary with no stale entry rows. Real values, identities and file IDs
+Daily summary with no stale entry rows. A separate full previous-month live pull
+matched the combined calendar export's entry IDs, dates, ownership and integer
+minutes. This verifies that the previous month is not truncated by a rolling
+lookback. Real values, identities and file IDs
 remain in ignored local evidence only.
 
 A user-authorized native Google Sheets test imported a dedicated workbook and

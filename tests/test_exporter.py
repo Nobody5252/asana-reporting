@@ -141,7 +141,8 @@ class ExportTests(unittest.TestCase):
 
     def test_thirty_days_and_day_range(self):
         p = app.parser()
-        self.assertEqual(app.date_range(p.parse_args([]), date(2026, 10, 15)), (date(2026, 9, 16), date(2026, 10, 15)))
+        self.assertEqual(app.date_range(p.parse_args([]), date(2026, 10, 15)), (date(2026, 9, 1), date(2026, 10, 15)))
+        self.assertEqual(app.date_range(p.parse_args(["--days", "30"]), date(2026, 10, 15)), (date(2026, 9, 16), date(2026, 10, 15)))
         self.assertEqual(app.date_range(p.parse_args(["--date", "yesterday"]), date(2026, 10, 15)), (date(2026, 10, 14), date(2026, 10, 14)))
         self.assertEqual(app.date_range(p.parse_args(["--start", "2026-10-01", "--end", "2026-10-15"])), (date(2026, 10, 1), date(2026, 10, 15)))
         for argv in (["--date", "today", "--days", "30"], ["--days", "0"], ["--date", "2026-02-30"], ["--start", "2026-10-16", "--end", "2026-10-15"]):
@@ -181,6 +182,24 @@ class ExportTests(unittest.TestCase):
         api, _, _ = client([{"data": [], "next_page": {"offset": "x"}}, {"data": [], "next_page": {"offset": "x"}}])
         with self.assertRaisesRegex(app.ExportError, "pagination"):
             list(api.pages("/time_tracking_entries", {}))
+
+    def test_calendar_month_reporting_ranges(self):
+        p = app.parser()
+        for end, expected in (("2026-10-19", date(2026, 9, 1)),
+                              ("2027-01-03", date(2026, 12, 1)),
+                              ("2024-03-31", date(2024, 2, 1))):
+            self.assertEqual(app.date_range(p.parse_args(["--calendar-months", "2", "--end", end])),
+                             (expected, date.fromisoformat(end)))
+        self.assertEqual(app.date_range(p.parse_args(["--calendar-months", "1", "--end", "2026-10-19"])),
+                         (date(2026, 10, 1), date(2026, 10, 19)))
+        self.assertEqual(app.date_range(p.parse_args(["--calendar-months", "1", "--end", "2026-11-03"])),
+                         (date(2026, 10, 28), date(2026, 11, 3)))
+
+    def test_calendar_months_cannot_be_mixed_with_other_range_modes(self):
+        p = app.parser()
+        for other in (["--date", "2026-10-19"], ["--start", "2026-10-01"], ["--days", "60"]):
+            with self.assertRaises(app.ExportError):
+                app.date_range(p.parse_args(["--calendar-months", "2", *other]))
 
     def test_failed_page_does_not_publish_or_touch_history(self):
         api, _, _ = client([{"data": {"gid": "1", "name": "Owner", "workspaces": [{"gid": "8", "name": "Work"}]}},

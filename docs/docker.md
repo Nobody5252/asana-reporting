@@ -32,7 +32,7 @@ export LOCAL_GID=$(id -g)
 mkdir -p asana-exports-v2
 docker compose build
 docker compose run --rm exporter --list-workspaces
-docker compose run --rm exporter --workspace WORKSPACE_GID --expected-owner OWNER_GID --start 2026-10-01 --end 2026-10-18 --include-tasks
+docker compose run --rm exporter --workspace WORKSPACE_GID --expected-owner OWNER_GID --calendar-months 2 --end 2026-10-18 --include-tasks
 ```
 
 Replace the uppercase GID placeholders with numeric IDs. Compose mounts the
@@ -62,7 +62,7 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
   asana-reporting:2.1.0 \
   --token-file /run/secrets/asana_token --non-interactive --output /data \
   --workspace WORKSPACE_GID --expected-owner OWNER_GID \
-  --start 2026-10-01 --end 2026-10-18
+  --calendar-months 2 --end 2026-10-18
 ```
 
 The image's default UID/GID is 10001:10001; overriding the runtime user aligns

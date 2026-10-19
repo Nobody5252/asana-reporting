@@ -15,7 +15,7 @@ from test_exporter import entry
 
 class SheetsTests(Snapshots, unittest.TestCase):
     def prepare(self, raw=None, end=DAY):
-        start = min(end.replace(day=1), end - timedelta(days=6))
+        start = (end.replace(day=1) - timedelta(days=1)).replace(day=1)
         tables = sheets.report(self.load(self.snapshot(raw=raw, start=start, end=end)))
         metadata = {"sheets": [{"properties": {"title": title, "sheetId": i,
                      "gridProperties": {"rowCount": 100, "columnCount": 26}}}
@@ -25,7 +25,7 @@ class SheetsTests(Snapshots, unittest.TestCase):
     def test_totals_ids_and_optional_labels(self):
         tables, _ = self.prepare([entry(identifier="1234567890123456789", minutes=61, project=None)])
         self.assertEqual(tables["Daily"][1][1:], [1, 61, 61 / 60])
-        self.assertEqual(tables["Monthly"][-1][1:], [1, 61, 61 / 60])
+        self.assertEqual(tables["Monthly"][2][2:], [1, 61, 61 / 60])
         self.assertEqual(tables["Entries"][1][6], "1234567890123456789")
 
     def test_replay_replaces_and_clears_tail_without_append(self):
@@ -72,7 +72,7 @@ class SheetsTests(Snapshots, unittest.TestCase):
     def test_zero_window_and_readback_mismatch(self):
         tables, _ = self.prepare([])
         self.assertEqual(tables["Daily"][1][1:], [0, 0, 0])
-        self.assertEqual(tables["Monthly"][1][1:], [0, 0, 0])
+        self.assertEqual(tables["Monthly"][1][2:], [0, 0, 0])
         observed = copy.deepcopy(tables)
         observed["Monthly"][1][2] = 99
         with self.assertRaisesRegex(StorageError, "readback"):
@@ -117,7 +117,7 @@ class SheetsTests(Snapshots, unittest.TestCase):
             entry("100", 60, "2026-10-01"), entry("101", 120, "2026-10-08"),
             entry("102", 30, "2026-10-09"), entry("103", 90, "2026-10-15")])
         status = dict(tables["Status"][1:])
-        self.assertEqual(len(tables["Monthly"]), 16)
+        self.assertEqual(len(tables["Monthly"]), 50)
         self.assertEqual(len(tables["Week"]), 8)
         self.assertEqual([status[k] for k in ("month_minutes", "week_minutes", "daily_minutes")],
                          [300, 120, 90])
@@ -125,7 +125,9 @@ class SheetsTests(Snapshots, unittest.TestCase):
         self.assertEqual(tables["Daily"][1][1:], [1, 90, 1.5])
         self.assertEqual(tables["Daily"][3], tables["Entries"][0])
         self.assertEqual([row[6] for row in tables["Daily"][4:]], ["103"])
-        self.assertEqual(tables["Monthly"][2][1:], [0, 0, 0])
+        zero_day = next(row for row in tables["Monthly"][5:]
+                        if row[0] == (date(2026, 10, 2) - sheets.EPOCH).days)
+        self.assertEqual(zero_day[2:], [0, 0, 0])
 
     def test_week_crosses_month_boundary_without_inflating_month_to_date(self):
         tables, _ = self.prepare([
@@ -136,7 +138,8 @@ class SheetsTests(Snapshots, unittest.TestCase):
         self.assertEqual((status["week_start"], status["month_start"]), ("2026-10-28", "2026-11-01"))
         self.assertEqual((status["month_minutes"], status["week_minutes"]), (120, 300))
         self.assertEqual(len(tables["Entries"]), 5)
-        self.assertEqual(len(tables["Monthly"]), 4)
+        self.assertEqual(len(tables["Monthly"]), 39)
+        self.assertEqual(tables["Monthly"][1][2:], [2, 180, 3])
 
     def test_incomplete_month_or_week_coverage_is_rejected(self):
         with self.assertRaisesRegex(StorageError, "cover"):
@@ -176,6 +179,45 @@ class SheetsTests(Snapshots, unittest.TestCase):
                 row[1] = "999"
         with self.assertRaises(StorageError):
             sheets.checked_batch(tables, metadata, prior, migrate_layout=True)
+
+    def test_full_previous_calendar_month_and_mtd_are_separate(self):
+        tables, _ = self.prepare([
+            entry("100", 90, "2026-09-01"), entry("101", 30, "2026-09-30"),
+            entry("102", 60, "2026-10-01"), entry("103", 120, "2026-10-15")])
+        self.assertEqual(tables["Monthly"][1], ["2026-09", "Full month: 2026-09-01 to 2026-09-30", 2, 120, 2])
+        self.assertEqual(tables["Monthly"][2], ["2026-10", "Month to date: 2026-10-01 to 2026-10-15", 2, 180, 3])
+        self.assertEqual(tables["Monthly"][5][0], (date(2026, 9, 1) - sheets.EPOCH).days)
+        self.assertEqual(dict(tables["Status"][1:])["previous_month_minutes"], 120)
+        with self.assertRaisesRegex(StorageError, "calendar months"):
+            sheets.report(self.load(self.snapshot(raw=[], start=date(2026, 9, 16))))
+
+    def test_previous_month_leap_year_and_january_year_boundary(self):
+        for end, previous, days in ((date(2024, 3, 1), "2024-02", 29),
+                                    (date(2027, 1, 1), "2026-12", 31)):
+            tables, _ = self.prepare([], end=end)
+            self.assertEqual(tables["Monthly"][1][0], previous)
+            self.assertEqual(len(tables["Monthly"][5:]), days + 1)
+
+    def test_mtd_only_mode_is_explicit_and_does_not_label_partial_previous_month(self):
+        snapshot = self.load(self.snapshot(raw=[], start=date(2026, 10, 1)))
+        tables = sheets.report(snapshot, calendar_months=1)
+        self.assertEqual(tables["Monthly"][1][0], "2026-10")
+        self.assertEqual(len(tables["Monthly"]), 19)
+        self.assertNotIn("previous_month_minutes", dict(tables["Status"][1:]))
+        with self.assertRaises(StorageError):
+            sheets.report(snapshot)
+
+    def test_v2_to_calendar_layout_migration_requires_opt_in(self):
+        tables, metadata = self.prepare([])
+        prior = copy.deepcopy(tables["Status"])
+        for row in prior:
+            if row[0] == "format":
+                row[1] = "asana-sheets-v2"
+            if row[0] == "report_policy":
+                row[1] = sheets.OLD_POLICY
+        with self.assertRaises(StorageError):
+            sheets.checked_batch(tables, metadata, prior)
+        sheets.checked_batch(tables, metadata, prior, migrate_layout=True)
 
 
 if __name__ == "__main__":

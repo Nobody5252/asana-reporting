@@ -22,18 +22,25 @@ from asana_postgres import StorageError, load_snapshot
 
 TABS = ("Daily", "Week", "Monthly", "Entries", "Status")
 SCOPE = ("workspace_gid", "owner_gid", "report_policy")
-FORMAT = "asana-sheets-v2"
-POLICY = "month-to-date-last-seven-days-daily"
+FORMAT = "asana-sheets-v3"
+OLD_POLICY = "month-to-date-last-seven-days-daily"
+POLICIES = {1: OLD_POLICY, 2: "previous-month-and-month-to-date-last-seven-days-daily"}
+POLICY = POLICIES[2]
 EPOCH = date(1899, 12, 30)
 
 
-def report(snapshot):
+def report(snapshot, calendar_months=2):
     m = snapshot.manifest
+    if calendar_months not in POLICIES:
+        raise StorageError("Choose one or two calendar months.")
     as_of = date.fromisoformat(m["end_date"])
     month_start = as_of.replace(day=1)
+    previous_end = month_start - timedelta(days=1)
+    previous_start = previous_end.replace(day=1)
+    monthly_start = previous_start if calendar_months == 2 else month_start
     week_start = as_of - timedelta(days=6)
-    if date.fromisoformat(m["start_date"]) > min(month_start, week_start):
-        raise StorageError("Snapshot must cover month-to-date and all seven reporting days.")
+    if date.fromisoformat(m["start_date"]) > min(monthly_start, week_start):
+        raise StorageError("Snapshot must cover the requested calendar months and all seven reporting days.")
     daily = defaultdict(lambda: [0, 0])
     detail = [["Work date", "Person", "Minutes", "Hours", "Project", "Task",
                "Entry ID", "Owner ID", "Creator ID", "Task ID", "Project ID", "Project status"]]
@@ -49,16 +56,27 @@ def report(snapshot):
                        row["reporting_project_name"], row["task_name"], row["entry_gid"],
                        row["assignee_gid"], row["created_by_gid"], row["task_gid"],
                        row["reporting_project_gid"], row["reporting_project_status"]])
-    def summary(start):
+    def summary(start, end=as_of):
         return [["Work date", "Entries", "Minutes", "Hours"]] + [
             [(day - EPOCH).days, *daily[day.isoformat()], daily[day.isoformat()][1] / 60]
-            for day in (start + timedelta(days=i) for i in range((as_of - start).days + 1))]
+            for day in (start + timedelta(days=i) for i in range((end - start).days + 1))]
 
-    week, monthly, today = summary(week_start), summary(month_start), summary(as_of)
+    week, month_to_date, today = summary(week_start), summary(month_start), summary(as_of)
+    periods = [(month_start, as_of, "Month to date", month_to_date)]
+    if calendar_months == 2:
+        periods.insert(0, (previous_start, previous_end, "Full month", summary(previous_start, previous_end)))
+    monthly = [["Month", "Coverage", "Entries", "Minutes", "Hours"]]
+    for start, end, label, rows in periods:
+        count, minutes = sum(row[1] for row in rows[1:]), sum(row[2] for row in rows[1:])
+        monthly.append([start.strftime("%Y-%m"), f"{label}: {start} to {end}", count, minutes, minutes / 60])
+    monthly.extend([[], ["Work date", "Month", "Entries", "Minutes", "Hours"]])
+    monthly.extend([[row[0], (EPOCH + timedelta(days=row[0])).strftime("%Y-%m"), *row[1:]]
+                    for row in summary(monthly_start)[1:]])
     today_details = [row for row in detail[1:] if row[0] == (as_of - EPOCH).days]
-    status = {"format": FORMAT, "report_policy": POLICY,
+    status = {"format": FORMAT, "report_policy": POLICIES[calendar_months],
               **{key: m[key] for key in ("workspace_gid", "owner_gid", "start_date", "end_date")},
               "as_of_date": as_of.isoformat(), "month_start": month_start.isoformat(),
+              "calendar_months": calendar_months, "monthly_start": monthly_start.isoformat(),
               "week_start": week_start.isoformat(),
               "snapshot_sha256": snapshot.digest, "exported_at_utc": m["exported_at_utc"],
               "entry_count": len(snapshot.entries), "duration_minutes": m["duration_minutes"],
@@ -66,7 +84,10 @@ def report(snapshot):
               "context_status": m.get("enrichment_summary", {}).get("status", "not_requested"),
               "source": "Validated Asana exporter snapshot; own time by entry assignee",
               "refresh_policy": "Managed tabs replaced in full; one writer; do not edit these tabs"}
-    for label, rows in (("month", monthly), ("week", week), ("daily", today)):
+    totals = [("month", month_to_date), ("week", week), ("daily", today)]
+    if calendar_months == 2:
+        totals.append(("previous_month", periods[0][3]))
+    for label, rows in totals:
         count, minutes = sum(row[1] for row in rows[1:]), sum(row[2] for row in rows[1:])
         status.update({label + "_entry_count": count, label + "_minutes": minutes,
                        label + "_hours": minutes / 60})
@@ -87,10 +108,13 @@ def checked_batch(tables, metadata, previous_status, *, migrate_layout=False):
     """
     current = dict(tables["Status"][1:])
     prior = dict(previous_status[1:])
-    legacy = migrate_layout and prior.get("format") == "asana-sheets-v1"
-    keys = ("workspace_gid", "owner_gid") if legacy else SCOPE
-    if (current.get("format") != FORMAT or current.get("report_policy") != POLICY or
-            (not legacy and prior.get("format") != FORMAT) or
+    legacy = prior.get("format") == "asana-sheets-v1"
+    migration = migrate_layout and (legacy or
+        (prior.get("format") in ("asana-sheets-v2", FORMAT) and
+         prior.get("report_policy") in POLICIES.values()))
+    keys = ("workspace_gid", "owner_gid") if migration else SCOPE
+    if (current.get("format") != FORMAT or current.get("report_policy") not in POLICIES.values() or
+            (not migration and prior.get("format") != FORMAT) or
             any(prior.get(k) != current[k] for k in keys)):
         raise StorageError("Destination is not the same managed owner/workspace/report policy.")
     try:
@@ -196,11 +220,13 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Write private report JSON for workbook creation/connector use")
     parser.add_argument("--spreadsheet-id", help="Refresh an existing dedicated, initialized reporting Sheet")
     parser.add_argument("--access-token-file", type=Path, help="Explicit short-lived Google OAuth token file")
+    parser.add_argument("--calendar-months", type=int, choices=(1, 2), default=2,
+                        help="Monthly view: current month to date, plus the full previous month by default")
     parser.add_argument("--migrate-layout", action="store_true",
-                        help="Explicitly migrate a v1 workbook after its five report tabs are initialized")
+                        help="Explicitly migrate an older workbook or change its calendar-month policy; five report tabs must exist")
     args = parser.parse_args(argv)
     try:
-        tables = report(load_snapshot(args.snapshot, args.expected_owner, args.workspace))
+        tables = report(load_snapshot(args.snapshot, args.expected_owner, args.workspace), args.calendar_months)
         if bool(args.spreadsheet_id) != bool(args.access_token_file):
             raise StorageError("Publishing requires both --spreadsheet-id and --access-token-file.")
         if not args.output and not args.spreadsheet_id:

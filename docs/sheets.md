@@ -3,12 +3,13 @@
 `asana_sheets.py` reads a completed, unfiltered exporter snapshot. It uses the
 same checksum, ownership and integer-minute reconciliation validator as optional
 Postgres storage, without importing a database driver or contacting Asana.
-The original exporter and its dependency-free runtime remain unchanged.
+The exporter remains dependency-free and supports calendar-aligned collection.
 
 The dedicated reporting workbook has five managed tabs:
 
-- Monthly: one row per calendar day from the first of the month through the
-  report date, with entry counts, minutes and hours, including zero days.
+- Monthly: separate totals for the **full previous calendar month** and the
+  **current month to date**, labeled with exact coverage. Below those totals,
+  one row per day shows each month's daily counts, minutes and hours, including zeros.
 - Week: one summary row per day for the last seven days, including the report date.
 - Entries: individual entries for those same seven days, with optional context and IDs.
 - Daily: the report date's totals, followed by that day's individual entries.
@@ -17,9 +18,11 @@ The dedicated reporting workbook has five managed tabs:
   source timestamp and separate month/week/day totals.
 
 The report date is the snapshot's inclusive `end_date`, not the publishing
-computer's clock. The snapshot must begin on or before the earlier of the first
-of that month and six days before the report date. In the first six days of a
-month, collection must reach into the previous month to cover the full week.
+computer's clock. By default, the snapshot must begin on or before the first day
+of the previous month. This is a calendar window, not a fixed 30/60-day lookback:
+September 1 through October 19 includes all September and October to date.
+Both collector and publisher accept `--calendar-months 1` for month-to-date only.
+That mode must also cover the last seven days, including prior-month days near month start.
 Insufficient coverage is rejected rather than reported as zero. Extra source
 dates are excluded from the month/week/day views. Keep completed snapshots for history.
 
@@ -31,6 +34,10 @@ values; uploaded text cannot execute as formulas. Hours derive from minutes.
 
 ```sh
 mkdir -p local-validation/sheets
+python3 asana_time_export.py --token-file /private/secrets/asana.token \
+  --expected-owner OWNER_GID --workspace WORKSPACE_GID \
+  --calendar-months 2 --include-tasks --non-interactive
+# Use the completed snapshot directory printed by the collector below.
 python3 asana_sheets.py /path/to/completed-snapshot \
   --expected-owner OWNER_GID --workspace WORKSPACE_GID \
   --output local-validation/sheets/report.json
@@ -85,7 +92,7 @@ used the connected Drive transport with the same generated replacement payload.
 
 ## Refresh contract
 
-Each workbook is dedicated to one owner, workspace and the v2 rolling-report
+Each workbook is dedicated to one owner, workspace and the v3 calendar-report
 policy. Report dates may advance, including across month boundaries. Refresh
 rejects identity changes, backward report dates, older observations and conflicting
 snapshots with the same timestamp. This remains a working report rather than an
@@ -93,8 +100,9 @@ append-only ledger; corrections outside its visible windows require a fresh
 historical export or database reporting.
 
 For a v1 workbook, first rename its old Daily tab to Week, add a new Daily tab,
-and initialize the five supported tabs. Then pass `--migrate-layout` on the
-first refresh. This explicitly permits the layout/date-policy migration while
+and initialize the five supported tabs. Existing v2 workbooks already have those
+five tabs. Pass `--migrate-layout` on the first calendar-report refresh, or when
+explicitly switching between one- and two-month reporting. This permits migration while
 preserving the owner/workspace and freshness checks. It does not permit changing
 the consultant or workspace. Subsequent refreshes need no migration flag.
 

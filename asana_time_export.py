@@ -565,6 +565,9 @@ def save_snapshot(output, entries, daily, manifest, context=None, secret=None):
 
 def date_range(args, today=None):
     today = today or date.today()
+    calendar_months = getattr(args, "calendar_months", None)
+    if calendar_months is None and not args.date and not args.start and args.days is None:
+        calendar_months = 2
     def parse(text):
         if text == "today":
             return today
@@ -572,17 +575,26 @@ def date_range(args, today=None):
             return today - timedelta(days=1)
         return api_date(text)
     if args.date:
-        if args.start or args.end or args.days is not None:
+        if args.start or args.end or args.days is not None or calendar_months is not None:
             raise ExportError("Use --date alone, or --start/--end, or --days [--end].")
         start = end = parse(args.date)
     else:
         end = parse(args.end) if args.end else today
-        if args.start:
+        if calendar_months is not None:
+            if args.start or args.days is not None:
+                raise ExportError("Choose --calendar-months, --start or --days, not a combination.")
+            start = end.replace(day=1)
+            if calendar_months == 2:
+                start = (start - timedelta(days=1)).replace(day=1)
+            # A month-to-date-only report still needs seven days of source
+            # coverage for its separate Week/Entries views near month start.
+            start = min(start, end - timedelta(days=6))
+        elif args.start:
             if args.days is not None:
                 raise ExportError("Choose --start or --days, not both.")
             start = parse(args.start)
         else:
-            days = 30 if args.days is None else args.days
+            days = args.days
             if not 1 <= days <= 366:
                 raise ExportError("--days must be between 1 and 366.")
             start = end - timedelta(days=days - 1)
@@ -601,7 +613,9 @@ def parser():
     p.add_argument("--date", help="One work date: YYYY-MM-DD, today or yesterday")
     p.add_argument("--start", help="Inclusive start date: YYYY-MM-DD")
     p.add_argument("--end", help="Inclusive end date; defaults to this computer's local today")
-    p.add_argument("--days", type=int, help="Number of inclusive days, default 30; may combine with --end")
+    p.add_argument("--days", type=int, help="Explicit inclusive day count; may combine with --end; otherwise calendar reporting is used")
+    p.add_argument("--calendar-months", type=int, choices=(1, 2),
+                   help="Calendar reporting coverage: 1=current month, 2=previous month plus current month (default); includes the last seven days; may combine with --end")
     p.add_argument("--project", help="Only entries attributed to this project GID (not all member tasks)")
     p.add_argument("--include-tasks", action="store_true", help="Best-effort task names and direct/inherited project context; never required to count time")
     p.add_argument("--task-name-contains", help="Case-insensitive task-name substring; fetches details, not an Asana saved search")
