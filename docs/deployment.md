@@ -85,7 +85,8 @@ python3 asana_sheets.py /approved/private/snapshots/COMPLETED_RUN \
 Use `--output /approved/private/report.json` instead to prepare report data
 offline. The current publisher accepts an explicit short-lived OAuth token;
 it does not mint/renew tokens, create workbooks, consolidate owners, consume
-database reporting views or change a workbook's owner/workspace/date window.
+database reporting views or change a workbook's owner/workspace. The Sheets
+publisher supports the documented rolling month/week/day views.
 The live integration used the connected Google transport with this module's
 payload and exact readback. Standalone HTTP transport tests are synthetic.
 
@@ -154,9 +155,11 @@ merely to refresh cell values.
 
 ## Rolling windows and retained history
 
-Before daily Sheets automation, replace the exact-window-only contract with a
-deliberate feed contract. Preserve owner/workspace checks and reject stale runs.
-Define the visible date range and retain/archive earlier data before replacement.
+The Sheets publisher implements a rolling feed: month-to-date daily totals,
+the latest seven days of summaries/entries, and the report day's totals/entries.
+Owner/workspace, coverage and freshness checks remain enforced. Collect from
+the earlier of month start and six days before the report date through that date.
+Retain/archive earlier snapshots before replacement.
 Refresh all open billing periods and define how corrections outside the lookback
 are requested. Never append overlapping exports or sum repeated daily snapshots.
 

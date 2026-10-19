@@ -5,12 +5,23 @@ same checksum, ownership and integer-minute reconciliation validator as optional
 Postgres storage, without importing a database driver or contacting Asana.
 The original exporter and its dependency-free runtime remain unchanged.
 
-The dedicated reporting workbook has four managed tabs:
+The dedicated reporting workbook has five managed tabs:
 
-- Daily: all dates in the inclusive export window, including zero days.
-- Monthly: totals **within the export window**, not necessarily full months.
-- Entries: individual owner entries, minutes, hours, optional context and IDs.
-- Status: owner/workspace/window, snapshot digest, source timestamp and totals.
+- Monthly: one row per calendar day from the first of the month through the
+  report date, with entry counts, minutes and hours, including zero days.
+- Week: one summary row per day for the last seven days, including the report date.
+- Entries: individual entries for those same seven days, with optional context and IDs.
+- Daily: the report date's totals, followed by that day's individual entries.
+  A zero day stays zero; it does not silently show an earlier day's work.
+- Status: owner/workspace, source coverage, report dates, snapshot digest,
+  source timestamp and separate month/week/day totals.
+
+The report date is the snapshot's inclusive `end_date`, not the publishing
+computer's clock. The snapshot must begin on or before the earlier of the first
+of that month and six days before the report date. In the first six days of a
+month, collection must reach into the previous month to cover the full week.
+Insufficient coverage is rejected rather than reported as zero. Extra source
+dates are excluded from the month/week/day views. Keep completed snapshots for history.
 
 Unavailable project/task names never remove minutes. Dates use the Asana work
 date as a numeric spreadsheet date. IDs and external text use explicit string
@@ -74,12 +85,20 @@ used the connected Drive transport with the same generated replacement payload.
 
 ## Refresh contract
 
-Each workbook is dedicated to one owner, workspace and exact date window.
-Refresh rejects scope changes, older observations and conflicting snapshots
-with the same timestamp. To change the window, create another dedicated report
-until a rolling-window/multi-owner policy is implemented.
+Each workbook is dedicated to one owner, workspace and the v2 rolling-report
+policy. Report dates may advance, including across month boundaries. Refresh
+rejects identity changes, backward report dates, older observations and conflicting
+snapshots with the same timestamp. This remains a working report rather than an
+append-only ledger; corrections outside its visible windows require a fresh
+historical export or database reporting.
 
-One atomic Sheets batch replaces values in the four managed tab ranges and
+For a v1 workbook, first rename its old Daily tab to Week, add a new Daily tab,
+and initialize the five supported tabs. Then pass `--migrate-layout` on the
+first refresh. This explicitly permits the layout/date-policy migration while
+preserving the owner/workspace and freshness checks. It does not permit changing
+the consultant or workspace. Subsequent refreshes need no migration flag.
+
+One atomic Sheets batch replaces values in the five managed tab ranges and
 clears trailing rows. Replays do not append entries or hours. Other tabs and
 formatting are preserved. Do not put manual notes inside these managed tabs.
 Use a separate tab for analysis or notes. Larger refreshes grow the grid as
@@ -87,11 +106,11 @@ needed and remain bounded to 100,000 rows and one million cells per managed tab.
 
 Use one writer at a time: the freshness read and batch write are not a lock or
 compare-and-swap. After a timeout, read back before retrying. Successful CLI
-publication includes an exact four-tab readback. A readback failure can mean
+publication includes an exact five-tab readback. A readback failure can mean
 the write succeeded and verification failed; it does not imply rollback.
 
 For six owners, aggregate validated owner data in Postgres or define a separate
-workbook/feed per owner. Do not point six independent writers at the same four
+workbook/feed per owner. Do not point six independent writers at the same five
 tabs. This first integration is a snapshot report, not a historical database.
 
 API behavior: [Sheets updateCells](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/request#UpdateCellsRequest).

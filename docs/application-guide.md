@@ -1,6 +1,6 @@
 # Asana Reporting architecture and operating guide
 
-Updated October 18, 2026. For technical stakeholders and deployment operators.
+Updated October 19, 2026. For technical stakeholders and deployment operators.
 
 ## 1. Purpose and implemented functionality
 
@@ -20,17 +20,17 @@ locking are separate from reporting logged time.
 - Individual entries, daily/monthly summaries and optional task/project context.
 - Completed snapshots with reconciliation, metadata and file checksums.
 - Postgres imports with stable identity, revisions and replay protection.
-- Google Sheets publication to Daily, Monthly, Entries and Status tabs.
+- Google Sheets publication to Daily, Week, Monthly, Entries and Status tabs.
 - Docker images for the collector and optional database and Sheets tools.
 
-There are 76 automated tests: 67 run offline and nine exercise real Postgres
+There are 82 automated tests: 73 run offline and nine exercise real Postgres
 in CI. Authorized live collection, database imports and connected Sheets refreshes
 have also been checked. Secrets and real exports are excluded from Git and builds.
 
 ### Operating scope
 
 The tools currently run as separate command-line stages. A six-person coordinator,
-renewable Google authentication, changing-date Sheet refreshes, consolidation,
+renewable Google authentication, consolidation,
 alerts and a web viewer remain implementation work. The deployment designs
 distinguish current manual operation from the proposed nightly service.
 
@@ -157,14 +157,18 @@ and correction policy is explicit. See [Postgres operations](postgres.md).
 
 ## 5. Google Sheets and consolidation
 
-The Python publisher sends typed values to Daily, Monthly, Entries and Status
+The Python publisher sends typed values to Daily, Week, Monthly, Entries and Status
 tabs. IDs/names are text, while minutes and hours are numeric. One Google batch
 replaces managed values and clears old trailing rows. Exact readback checks the
 result. Repeated publication does not append duplicate hours.
 
 Keep notes/formulas on separate tabs: managed ranges are replaced during a
-refresh. The current contract accepts one owner, workspace and exact date window
-per workbook. Changing the date window requires the planned refresh/history policy.
+refresh. Each workbook belongs to one owner/workspace and rolls forward with
+the source snapshot's end date. Monthly shows daily hours/counts month-to-date;
+Week and Entries cover the last seven days, including that date. Daily shows
+that date's totals followed by its individual entries. Zero days remain visible.
+Collection must cover both the full month-to-date and seven-day window, even
+when the week starts in the previous month. Older dates/observations are rejected.
 
 ### Google setup
 
@@ -252,7 +256,7 @@ scoped permissions, create identities and configure networking.
 4. Provision each person's Asana secret and expected owner/workspace map. Grant
    the Google writer access to the workbooks. Implement credential acquisition
    and renewal rather than scheduling a copied expiring Google token.
-5. Complete the coordinator, snapshot upload, rolling-date/history policy,
+5. Complete the coordinator, snapshot upload, retained-history policy,
    master publication, execution lock, alerts and stage recovery. These are
    application changes, not existing features enabled by a cloud setting.
 6. Build the coordinator image for the selected runtime architecture, push it
@@ -544,7 +548,8 @@ On Windows use `python`, Windows paths and the appropriate shell continuation.
 For Docker build `Dockerfile.sheets` and mount the snapshot and Google secret as
 described in [Sheets operations](sheets.md). The CLI checks destination scope,
 replaces managed data and verifies readback. An Asana token cannot be used here.
-Token renewal and rolling-date refresh remain requirements for unattended operation.
+Rolling-date views are implemented. Token renewal, scheduling and retained-history
+operations remain requirements for unattended operation.
 
 <!-- pagebreak -->
 
@@ -576,7 +581,7 @@ They add hosting, monitoring, access management and dependency maintenance.
 1. Validate native or Docker execution for one owner and reconcile snapshot totals.
 2. Configure approved persistence/reporting destinations and exercise imports,
    repeat publication and restore/recovery where selected.
-3. Complete orchestration, renewable Google authentication, rolling-date/history
+3. Complete orchestration, renewable Google authentication, retained-history
    handling and consolidation. Test all six owners and partial failures.
 4. Deploy the VM runner or managed job, verify alerts and overlap prevention,
    then enable the midnight schedule.

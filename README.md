@@ -20,8 +20,8 @@ Engineering documentation:
 - [Validation evidence and current limits](VALIDATION.md)
 
 The CSV collector, Postgres importer and Sheets publisher are implemented and
-tested. A six-person coordinator, automatic Google token renewal, changing-date
-Sheet refreshes, scheduled hosting, a consolidated dashboard and a web UI remain
+tested. A six-person coordinator, automatic Google token renewal,
+scheduled hosting, a consolidated dashboard and a web UI remain
 proposed work. Logged time is not an approved invoice or a billability decision.
 
 Report each consultant's own logged Asana time for reporting and billing.
@@ -166,8 +166,11 @@ decisions. Never share consultants' tokens or use a colleague's token.
 ## Offline validation
 
 Optional Google Sheets reporting is available through `asana_sheets.py` and
-`Dockerfile.sheets`. It refreshes a dedicated four-tab report from validated
-snapshots, without a database. See [Sheets setup and refresh](docs/sheets.md).
+`Dockerfile.sheets`. It refreshes five tabs from validated snapshots: Monthly
+shows month-to-date daily totals; Week and Entries cover the last seven days;
+Daily contains the report date's totals and individual entries; Status records
+coverage and freshness. Windows roll forward without a database. See
+[Sheets setup and refresh](docs/sheets.md).
 The connected Google account was used for a live integration test; unattended
 container authentication and scheduling are not configured.
 

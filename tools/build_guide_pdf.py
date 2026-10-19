@@ -176,7 +176,7 @@ def build():
         canvas.setStrokeColor(colors.HexColor('#CBD3D8'));canvas.setLineWidth(.5)
         canvas.line(48,39,A4[0]-48,39)
         canvas.setFont('Guide',7.5);canvas.setFillColor(GRAY)
-        canvas.drawString(48,26,'Asana Reporting | Architecture and operating guide | October 18, 2026')
+        canvas.drawString(48,26,'Asana Reporting | Architecture and operating guide | October 19, 2026')
         canvas.drawRightString(A4[0]-48,26,str(doc.page))
         canvas.restoreState()
     doc=SimpleDocTemplate(str(out),pagesize=A4,rightMargin=48,leftMargin=48,topMargin=44,bottomMargin=52,

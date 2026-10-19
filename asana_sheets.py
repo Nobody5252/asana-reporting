@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
 import re
@@ -20,59 +20,84 @@ import urllib.request
 
 from asana_postgres import StorageError, load_snapshot
 
-TABS = ("Daily", "Monthly", "Entries", "Status")
-SCOPE = ("workspace_gid", "owner_gid", "start_date", "end_date")
+TABS = ("Daily", "Week", "Monthly", "Entries", "Status")
+SCOPE = ("workspace_gid", "owner_gid", "report_policy")
+FORMAT = "asana-sheets-v2"
+POLICY = "month-to-date-last-seven-days-daily"
 EPOCH = date(1899, 12, 30)
 
 
 def report(snapshot):
     m = snapshot.manifest
-    daily, monthly = defaultdict(lambda: [0, 0]), defaultdict(lambda: [0, 0])
-    # Include zero-time days, using the already validated inclusive window.
-    for serial in range(date.fromisoformat(m["start_date"]).toordinal(),
-                        date.fromisoformat(m["end_date"]).toordinal() + 1):
-        daily[date.fromordinal(serial).isoformat()]
+    as_of = date.fromisoformat(m["end_date"])
+    month_start = as_of.replace(day=1)
+    week_start = as_of - timedelta(days=6)
+    if date.fromisoformat(m["start_date"]) > min(month_start, week_start):
+        raise StorageError("Snapshot must cover month-to-date and all seven reporting days.")
+    daily = defaultdict(lambda: [0, 0])
     detail = [["Work date", "Person", "Minutes", "Hours", "Project", "Task",
                "Entry ID", "Owner ID", "Creator ID", "Task ID", "Project ID", "Project status"]]
     for row in sorted(snapshot.entries, key=lambda r: (r["work_date"], r["entry_gid"])):
         minutes = row["duration_minutes"]
-        for bucket in (daily[row["work_date"]], monthly[row["work_date"][:7]]):
-            bucket[0] += 1
-            bucket[1] += minutes
+        bucket = daily[row["work_date"]]
+        bucket[0] += 1
+        bucket[1] += minutes
+        if row["work_date"] < week_start.isoformat():
+            continue
         detail.append([(date.fromisoformat(row["work_date"]) - EPOCH).days,
                        row["assignee_name"], minutes, minutes / 60,
                        row["reporting_project_name"], row["task_name"], row["entry_gid"],
                        row["assignee_gid"], row["created_by_gid"], row["task_gid"],
                        row["reporting_project_gid"], row["reporting_project_status"]])
-    # Empty windows still have explicit zero monthly totals.
-    for day in daily:
-        monthly[day[:7]]
-    status = {"format": "asana-sheets-v1", **{key: m[key] for key in SCOPE},
+    def summary(start):
+        return [["Work date", "Entries", "Minutes", "Hours"]] + [
+            [(day - EPOCH).days, *daily[day.isoformat()], daily[day.isoformat()][1] / 60]
+            for day in (start + timedelta(days=i) for i in range((as_of - start).days + 1))]
+
+    week, monthly, today = summary(week_start), summary(month_start), summary(as_of)
+    today_details = [row for row in detail[1:] if row[0] == (as_of - EPOCH).days]
+    status = {"format": FORMAT, "report_policy": POLICY,
+              **{key: m[key] for key in ("workspace_gid", "owner_gid", "start_date", "end_date")},
+              "as_of_date": as_of.isoformat(), "month_start": month_start.isoformat(),
+              "week_start": week_start.isoformat(),
               "snapshot_sha256": snapshot.digest, "exported_at_utc": m["exported_at_utc"],
               "entry_count": len(snapshot.entries), "duration_minutes": m["duration_minutes"],
               "hours": m["duration_minutes"] / 60,
               "context_status": m.get("enrichment_summary", {}).get("status", "not_requested"),
               "source": "Validated Asana exporter snapshot; own time by entry assignee",
               "refresh_policy": "Managed tabs replaced in full; one writer; do not edit these tabs"}
-    return {"Daily": [["Work date", "Entries", "Minutes", "Hours"]] +
-                      [[(date.fromisoformat(d) - EPOCH).days, *values, values[1] / 60]
-                       for d, values in sorted(daily.items())],
-            "Monthly": [["Month (within export window)", "Entries", "Minutes", "Hours"]] +
-                        [[d, *values, values[1] / 60] for d, values in sorted(monthly.items())],
+    for label, rows in (("month", monthly), ("week", week), ("daily", today)):
+        count, minutes = sum(row[1] for row in rows[1:]), sum(row[2] for row in rows[1:])
+        status.update({label + "_entry_count": count, label + "_minutes": minutes,
+                       label + "_hours": minutes / 60})
+    return {"Daily": [*today, [], detail[0], *today_details],
+            "Week": week, "Monthly": monthly,
             "Entries": detail, "Status": [["Field", "Value"], *map(list, status.items())]}
 
 
-def checked_batch(tables, metadata, previous_status):
+def table_width(rows):
+    return max(len(row) for row in rows)
+
+
+def checked_batch(tables, metadata, previous_status, *, migrate_layout=False):
     """Build one atomic replace, clearing stale trailing rows; never append time.
 
-    The four managed tabs belong exclusively to this feed. Other tabs are untouched.
+    The five managed tabs belong exclusively to this feed. Other tabs are untouched.
     Caller must serialize writers: Sheets batchUpdate has no compare-and-swap.
     """
     current = dict(tables["Status"][1:])
     prior = dict(previous_status[1:])
-    if prior.get("format") != "asana-sheets-v1" or any(prior.get(k) != current[k] for k in SCOPE):
-        raise StorageError("Destination is not the same managed owner/workspace/date window.")
+    legacy = migrate_layout and prior.get("format") == "asana-sheets-v1"
+    keys = ("workspace_gid", "owner_gid") if legacy else SCOPE
+    if (current.get("format") != FORMAT or current.get("report_policy") != POLICY or
+            (not legacy and prior.get("format") != FORMAT) or
+            any(prior.get(k) != current[k] for k in keys)):
+        raise StorageError("Destination is not the same managed owner/workspace/report policy.")
     try:
+        old_day = date.fromisoformat(prior["end_date"] if legacy else prior["as_of_date"])
+        new_day = date.fromisoformat(current["as_of_date"])
+        if old_day > new_day:
+            raise StorageError("Older report dates cannot replace this report.")
         before = datetime.fromisoformat(prior["exported_at_utc"].replace("Z", "+00:00"))
         after = datetime.fromisoformat(current["exported_at_utc"].replace("Z", "+00:00"))
         if before.tzinfo is None or after.tzinfo is None:
@@ -87,7 +112,7 @@ def checked_batch(tables, metadata, previous_status):
     requests = []
     for title in TABS:
         rows, properties = tables[title], sheets[title]
-        sid, width = properties["sheetId"], len(rows[0])
+        sid, width = properties["sheetId"], table_width(rows)
         grid = properties["gridProperties"]
         height = max(len(rows), grid["rowCount"])
         if height > 100000 or height * width > 1000000:
@@ -171,6 +196,8 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Write private report JSON for workbook creation/connector use")
     parser.add_argument("--spreadsheet-id", help="Refresh an existing dedicated, initialized reporting Sheet")
     parser.add_argument("--access-token-file", type=Path, help="Explicit short-lived Google OAuth token file")
+    parser.add_argument("--migrate-layout", action="store_true",
+                        help="Explicitly migrate a v1 workbook after its five report tabs are initialized")
     args = parser.parse_args(argv)
     try:
         tables = report(load_snapshot(args.snapshot, args.expected_owner, args.workspace))
@@ -185,10 +212,10 @@ def main(argv=None):
         if args.spreadsheet_id:
             client = SheetsClient(args.spreadsheet_id, args.access_token_file)
             metadata = client.request("?fields=sheets.properties")
-            previous = client.read("Status", "A1:B30")
-            requests = checked_batch(tables, metadata, previous)
+            previous = client.read("Status", "A1:B40")
+            requests = checked_batch(tables, metadata, previous, migrate_layout=args.migrate_layout)
             client.request(":batchUpdate", {"requests": requests})
-            observed = {title: client.read(title, f"A1:{'L' if title == 'Entries' else 'D' if title != 'Status' else 'B'}{max(30, len(tables[title]) + 1)}")
+            observed = {title: client.read(title, f"A1:{chr(64 + table_width(tables[title]))}{max(40, len(tables[title]) + 1)}")
                         for title in TABS}
             verify(tables, observed)
         print("Sheets report prepared" + ("; refresh and readback verified." if args.spreadsheet_id else "."))

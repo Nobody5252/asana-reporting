@@ -1,6 +1,6 @@
 # Validation and implemented stopping point
 
-Version: 2.1.0. Updated on October 18, 2026.
+Version: 2.1.0. Updated on October 19, 2026.
 
 Run from this project root:
 
@@ -8,7 +8,7 @@ Run from this project root:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
-**Current suite: 76 tests.** Ordinary offline runs pass 67 tests and explicitly
+**Current suite: 82 tests.** Ordinary offline runs pass 73 tests and explicitly
 skip nine Postgres integration tests. GitHub CI also runs those nine tests
 against a disposable real database. Both jobs passed on October 18, 2026.
 See [repository Actions](https://github.com/Nobody5252/asana-reporting/actions)
@@ -108,11 +108,22 @@ independent core/enrichment jobs remain future architecture work.
 
 ## Sheets integration
 
-The suite now includes seven synthetic Sheets tests: integer-minute totals,
+The suite now includes thirteen synthetic Sheets tests: integer-minute totals,
 literal names and long text IDs, repeated replacement and trailing-row clearing,
 scope/freshness protection, zero-entry windows, readback mismatch detection,
 bounded grid growth, unrelated tabs, HTTP target/auth and error redaction.
-There are 76 tests total: 67 pass offline and nine require opt-in Postgres.
+There are now 82 tests total: 73 pass offline and nine require opt-in Postgres.
+Six additional rolling-report tests cover independent month/week/day totals,
+seven-day filtering, a week crossing month boundaries, incomplete source coverage,
+zero days, forward-date refreshes, stale report dates and explicit v1 migration
+with identity checks. Daily includes its summary plus individual entries;
+Monthly contains daily month-to-date summaries rather than monthly bucket rows.
+
+The rolling layout was also exercised with an authorized live snapshot and the
+connected Google Sheets transport. All five tabs matched the generated report,
+including month-to-date daily totals, the seven-day entry list, and a zero-day
+Daily summary with no stale entry rows. Real values, identities and file IDs
+remain in ignored local evidence only.
 
 A user-authorized native Google Sheets test imported a dedicated workbook and
 applied the module's generated replacement batch twice through the connected
