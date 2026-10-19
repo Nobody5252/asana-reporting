@@ -166,7 +166,8 @@ Keep notes/formulas on separate tabs: managed ranges are replaced during a
 refresh. Each workbook belongs to one owner/workspace and rolls forward with
 the source snapshot's end date. Monthly shows full previous-month and current
 month-to-date totals, followed by daily hours/counts for both months;
-Week and Entries cover the last seven days, including that date. Daily shows
+Week covers the last seven days; Entries lists current month-to-date detail.
+Both include the report date. Daily shows
 that date's totals followed by its individual entries. Zero days remain visible.
 Collection defaults to the first of the previous month through the report date.
 An October 19 run therefore includes all September and October to date. This

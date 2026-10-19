@@ -11,7 +11,9 @@ The dedicated reporting workbook has five managed tabs:
   **current month to date**, labeled with exact coverage. Below those totals,
   one row per day shows each month's daily counts, minutes and hours, including zeros.
 - Week: one summary row per day for the last seven days, including the report date.
-- Entries: individual entries for those same seven days, with optional context and IDs.
+- Entries: all individual entries from the first of the current month through
+  the report date, with optional context and IDs. Previous-month entries stay out
+  of this detail view, even when Week crosses the month boundary.
 - Daily: the report date's totals, followed by that day's individual entries.
   A zero day stays zero; it does not silently show an earlier day's work.
 - Status: owner/workspace, source coverage, report dates, snapshot digest,

@@ -57,7 +57,7 @@ python3 asana_time_export.py --token-file /approved/secrets/asana.token --expect
 With no date-range options, collection covers the **full previous calendar month
 plus the current month to date**. For example, an October 19 run starts September 1.
 `--calendar-months 1` selects month-to-date reporting; near month start it also
-collects the prior days needed by Week/Entries. `--end` can anchor either mode to
+collects the prior days needed by Week. `--end` can anchor either mode to
 an explicit report date. Arbitrary `--start`/`--days` ranges remain available for
 targeted exports, but incomplete calendar coverage is rejected by the Sheets publisher.
 
@@ -175,7 +175,8 @@ decisions. Never share consultants' tokens or use a colleague's token.
 Optional Google Sheets reporting is available through `asana_sheets.py` and
 `Dockerfile.sheets`. It refreshes five tabs from validated snapshots: Monthly
 shows a full previous-month total and current month-to-date total, followed by
-their daily breakdowns; Week and Entries cover the last seven days;
+their daily breakdowns; Week covers the last seven days and Entries lists all
+current month-to-date entries;
 Daily contains the report date's totals and individual entries; Status records
 coverage and freshness. Windows roll forward without a database. See
 [Sheets setup and refresh](docs/sheets.md).

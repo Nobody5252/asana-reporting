@@ -157,7 +157,8 @@ merely to refresh cell values.
 
 The Sheets publisher implements a calendar feed: the full previous month and
 the current month to date, with separate month totals and daily breakdowns;
-the latest seven days of summaries/entries, and the report day's totals/entries.
+the latest seven days of summaries, current month-to-date individual entries,
+and the report day's totals/entries.
 Owner/workspace, coverage and freshness checks remain enforced. Collect from
 the first of the previous month through the report date (`--calendar-months 2`,
 the collector default). Month-to-date-only mode is available with `--calendar-months 1`;

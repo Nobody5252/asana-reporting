@@ -121,7 +121,8 @@ class SheetsTests(Snapshots, unittest.TestCase):
         self.assertEqual(len(tables["Week"]), 8)
         self.assertEqual([status[k] for k in ("month_minutes", "week_minutes", "daily_minutes")],
                          [300, 120, 90])
-        self.assertEqual([row[6] for row in tables["Entries"][1:]], ["102", "103"])
+        self.assertEqual([row[6] for row in tables["Entries"][1:]], ["100", "101", "102", "103"])
+        self.assertEqual(sum(row[2] for row in tables["Entries"][1:]), status["month_minutes"])
         self.assertEqual(tables["Daily"][1][1:], [1, 90, 1.5])
         self.assertEqual(tables["Daily"][3], tables["Entries"][0])
         self.assertEqual([row[6] for row in tables["Daily"][4:]], ["103"])
@@ -137,7 +138,7 @@ class SheetsTests(Snapshots, unittest.TestCase):
         status = dict(tables["Status"][1:])
         self.assertEqual((status["week_start"], status["month_start"]), ("2026-10-28", "2026-11-01"))
         self.assertEqual((status["month_minutes"], status["week_minutes"]), (120, 300))
-        self.assertEqual(len(tables["Entries"]), 5)
+        self.assertEqual([row[6] for row in tables["Entries"][1:]], ["102", "103"])
         self.assertEqual(len(tables["Monthly"]), 39)
         self.assertEqual(tables["Monthly"][1][2:], [2, 180, 3])
 
@@ -188,6 +189,7 @@ class SheetsTests(Snapshots, unittest.TestCase):
         self.assertEqual(tables["Monthly"][2], ["2026-10", "Month to date: 2026-10-01 to 2026-10-15", 2, 180, 3])
         self.assertEqual(tables["Monthly"][5][0], (date(2026, 9, 1) - sheets.EPOCH).days)
         self.assertEqual(dict(tables["Status"][1:])["previous_month_minutes"], 120)
+        self.assertEqual([row[6] for row in tables["Entries"][1:]], ["102", "103"])
         with self.assertRaisesRegex(StorageError, "calendar months"):
             sheets.report(self.load(self.snapshot(raw=[], start=date(2026, 9, 16))))
 

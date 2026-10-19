@@ -114,7 +114,7 @@ scope/freshness protection, zero-entry windows, readback mismatch detection,
 bounded grid growth, unrelated tabs, HTTP target/auth and error redaction.
 There are now 88 tests total: 79 pass offline and nine require opt-in Postgres.
 Six additional rolling-report tests cover independent month/week/day totals,
-seven-day filtering, a week crossing month boundaries, incomplete source coverage,
+month-to-date entry filtering, a week crossing month boundaries, incomplete source coverage,
 zero days, forward-date refreshes, stale report dates and explicit v1 migration
 with identity checks. Daily includes its summary plus individual entries;
 Monthly now includes separate full previous-month/current month-to-date totals
@@ -125,7 +125,7 @@ coverage; arbitrary day counts require explicit selection.
 
 The rolling layout was also exercised with an authorized live snapshot and the
 connected Google Sheets transport. All five tabs matched the generated report,
-including month-to-date daily totals, the seven-day entry list, and a zero-day
+including month-to-date daily totals, the month-to-date entry list, and a zero-day
 Daily summary with no stale entry rows. A separate full previous-month live pull
 matched the combined calendar export's entry IDs, dates, ownership and integer
 minutes. This verifies that the previous month is not truncated by a rolling

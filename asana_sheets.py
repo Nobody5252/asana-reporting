@@ -49,7 +49,7 @@ def report(snapshot, calendar_months=2):
         bucket = daily[row["work_date"]]
         bucket[0] += 1
         bucket[1] += minutes
-        if row["work_date"] < week_start.isoformat():
+        if row["work_date"] < month_start.isoformat():
             continue
         detail.append([(date.fromisoformat(row["work_date"]) - EPOCH).days,
                        row["assignee_name"], minutes, minutes / 60,
